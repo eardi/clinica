@@ -2,6 +2,8 @@ from pathlib import Path
 from string import Template
 from typing import Union
 
+import numpy as np
+import pandas as pd
 import pytest
 
 from clinica.iotools.bids_utils import (
@@ -39,6 +41,188 @@ EXPECTED_README_CONTENT = Template(
 )
 
 
+def create_clinical_data(tmp_path: Path, study_name: StudyName) -> Path:
+    spec_df = pd.DataFrame(
+        {
+            "BIDS CLINICA": [
+                "participant_id",
+                "alternative_id_1",
+                "date_of_birth",
+                "sex",
+                "apoegen1",
+            ],
+            "ADNI": [np.nan, "PTID", np.nan, "PTGENDER", "APGEN1"],
+            "ADNI location": [
+                np.nan,
+                "ADNIMERGE.csv",
+                np.nan,
+                "ADNIMERGE.csv",
+                "APOERES.csv",
+            ],
+            "OASIS": [np.nan, "ID", np.nan, "M/F", np.nan],
+            "OASIS location": [
+                np.nan,
+                "oasis_cross-sectional.csv",
+                np.nan,
+                "oasis_cross-sectional.csv",
+                np.nan,
+            ],
+            "OASIS3": [np.nan, "Subject", np.nan, "M/F", np.nan],
+            "OASIS3 location": [
+                np.nan,
+                "oasis3_participants.csv",
+                np.nan,
+                "oasis3_participants.csv",
+                np.nan,
+            ],
+        }
+    )
+    spec_df.to_csv(tmp_path / "participant.tsv", sep="\t", index=False)
+
+    clinical_path = tmp_path / "clinical_data"
+    clinical_path.mkdir()
+
+    if study_name == StudyName.ADNI:
+        df_adnimerge = pd.DataFrame(
+            {
+                "PTID": [
+                    "001_S_0001",
+                    "001_S_0002",
+                    "001_S_0003",
+                    "001_S_0004",
+                    "001_S_0005",
+                    "001_S_0006",
+                ],
+                "PTGENDER": ["Male", "Female", "Male", "Female", "Female", None],
+                "AGE": ["40", "50", "60", "70", "80", None],
+            }
+        )
+        df_apoeres = pd.DataFrame(
+            {
+                "APGEN1": ["3", "3", "3", "3", None, "3"],
+                "GEN2": ["2", "2", "2", "2", None, "2"],
+            }
+        )
+        df_adnimerge.to_csv(clinical_path / "ADNIMERGE.csv", index=False)
+        df_apoeres.to_csv(clinical_path / "APOERES.csv", index=False)
+    elif study_name == StudyName.OASIS:
+        df_oasis = pd.DataFrame(
+            {
+                "ID": [
+                    "OAS1_0001_MRI1",
+                    "OAS1_0002_MRI1",
+                    "OAS1_0003_MRI1",
+                    "OAS1_0004_MRI1",
+                ],
+                "M/F": ["F", "M", "F", "M"],
+                "Age": ["45", "50", "55", "60"],
+            }
+        )
+        df_oasis.to_csv(clinical_path / "oasis_cross-sectional.csv", index=False)
+
+    elif study_name == StudyName.OASIS3:
+        df_oasis3 = pd.DataFrame(
+            {
+                "Subject": ["OAS30001", "OAS30002", "OAS30003", "OAS30004"],
+                "M/F": ["F", "F", "M", "M"],
+                "Age": ["45", "55", "65", "75"],
+            }
+        )
+        df_oasis3.to_csv(clinical_path / "oasis3_participants.csv", index=False)
+
+    return clinical_path
+
+
+@pytest.mark.parametrize(
+    "study_name, bids_ids, expected",
+    [
+        (
+            StudyName.OASIS,
+            ["0001"],
+            pd.DataFrame(
+                {
+                    "participant_id": ["0001"],
+                    "alternative_id_1": ["OAS1_0001_MRI1"],
+                    "sex": ["F"],
+                }
+            ),
+        ),
+        (
+            StudyName.OASIS3,
+            ["0001"],
+            pd.DataFrame(
+                {
+                    "participant_id": ["0001"],
+                    "alternative_id_1": ["OAS30001"],
+                    "sex": ["F"],
+                }
+            ),
+        ),
+        (  # todo : introducing None or np.nan in data changes the format for scalar values
+            StudyName.ADNI,
+            ["001S0001"],
+            pd.DataFrame(
+                {
+                    "participant_id": ["001S0001"],
+                    "alternative_id_1": ["001_S_0001"],
+                    "sex": ["Male"],
+                    "apoegen1": [3.0],
+                }
+            ),
+        ),
+        (
+            StudyName.OASIS,
+            ["0002", "0004", "0007"],
+            pd.DataFrame(
+                {
+                    "participant_id": ["0002", "0004"],
+                    "alternative_id_1": ["OAS1_0002_MRI1", "OAS1_0004_MRI1"],
+                    "sex": ["M", "M"],
+                }
+            ),
+        ),
+        (
+            StudyName.ADNI,
+            ["001S0005"],
+            pd.DataFrame(
+                {
+                    "participant_id": ["001S0005"],
+                    "alternative_id_1": ["001_S_0005"],
+                    "sex": ["Female"],
+                    "apoegen1": ["n/a"],
+                }
+            ),
+        ),
+        (
+            StudyName.ADNI,
+            ["001S0006"],
+            pd.DataFrame(
+                {
+                    "participant_id": ["001S0006"],
+                    "alternative_id_1": ["001_S_0006"],
+                    "sex": ["n/a"],
+                    "apoegen1": [3.0],
+                }
+            ),
+        ),
+    ],
+)
+def test_create_participants_df(tmp_path, bids_ids, expected, study_name):
+    from clinica.iotools.bids_utils import create_participants_df
+
+    clinical_path = create_clinical_data(tmp_path, study_name)
+    assert (
+        create_participants_df(
+            study_name,
+            clinical_specifications_folder=tmp_path,
+            clinical_data_dir=clinical_path,
+            bids_ids=bids_ids,
+        )
+        .reset_index(drop=True)
+        .equals(expected)
+    )
+
+
 def test_get_bids_subjs_list(tmp_path):
     from clinica.iotools.bids_utils import get_bids_subjs_list
 
@@ -49,7 +233,7 @@ def test_get_bids_subjs_list(tmp_path):
     for sub in ("sub-01", "sub-02", "sub-16"):
         (tmp_path / sub).mkdir()
 
-    assert set(get_bids_subjs_list(str(tmp_path))) == {"sub-01", "sub-02", "sub-16"}
+    assert set(get_bids_subjs_list(tmp_path)) == {"sub-01", "sub-02", "sub-16"}
 
 
 @pytest.mark.parametrize(
@@ -70,22 +254,22 @@ def test_remove_space_and_symbols(input_string, expected):
 
 @pytest.mark.parametrize("compress", [True, False])
 @pytest.mark.parametrize("sidecar", [True, False])
-def test_build_dcm2niix_command(compress, sidecar):
+def test_build_dcm2niix_command(tmp_path, compress, sidecar):
     from clinica.iotools.bids_utils import _build_dcm2niix_command
 
     compress_flag = "y" if compress else "n"
     sidecar_flag = "y" if sidecar else "n"
-    expected = ["dcm2niix", "-w", "0", "-f", "fmt", "-o", "output_dir"]
+    expected = ["dcm2niix", "-w", "0", "-f", "fmt", "-o", str(tmp_path / "out")]
     if compress:
         expected += ["-9"]
     expected += ["-z", compress_flag, "-b", sidecar_flag]
     if sidecar:
         expected += ["-ba", "y"]
-    expected += ["input_dir/inputs"]
+    expected += [str(tmp_path / "in")]
     assert (
         _build_dcm2niix_command(
-            "input_dir/inputs",
-            "output_dir",
+            tmp_path / "in",
+            tmp_path / "out",
             "fmt",
             compress=compress,
             bids_sidecar=sidecar,

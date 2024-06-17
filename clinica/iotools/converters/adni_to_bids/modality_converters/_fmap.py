@@ -14,15 +14,17 @@ import pandas as pd
 from clinica.iotools.converters.adni_to_bids.adni_utils import load_clinical_csv
 from clinica.utils.stream import cprint
 
+__all__ = ["convert_fmap"]
 
-def convert_adni_fmap(
+
+def convert_fmap(
     source_dir: PathLike,
     csv_dir: PathLike,
     destination_dir: PathLike,
     conversion_dir: PathLike,
-    subjects: Optional[List[str]] = None,
+    subjects: Iterable[str],
     mod_to_update: bool = False,
-    n_procs: Optional[int] = 1,
+    n_procs: int = 1,
 ):
     """Convert field map images of ADNI into BIDS format.
 
@@ -52,16 +54,15 @@ def convert_adni_fmap(
 
     import pandas as pd
 
-    from clinica.iotools.converters.adni_to_bids.adni_utils import paths_to_bids
+    from clinica.iotools.converters.adni_to_bids.adni_utils import (
+        ADNIModalityConverter,
+        paths_to_bids,
+    )
     from clinica.utils.stream import cprint
 
     csv_dir = Path(csv_dir)
     source_dir = Path(source_dir)
     conversion_dir = Path(conversion_dir)
-
-    if not subjects:
-        adni_merge = load_clinical_csv(csv_dir, "ADNIMERGE")
-        subjects = list(adni_merge.PTID.unique())
 
     cprint(
         f"Calculating paths of fMRI field maps (FMAPs). Output will be stored in {conversion_dir}.",
@@ -72,14 +73,16 @@ def convert_adni_fmap(
 
     cprint("Paths of field maps found. Exporting images into BIDS ...")
 
-    paths_to_bids(images, destination_dir, "fmap", mod_to_update=mod_to_update)
-    reorganize_fmaps(Path(destination_dir))
+    paths_to_bids(
+        images, destination_dir, ADNIModalityConverter.FMAP, mod_to_update=mod_to_update
+    )
+    reorganize_fmaps(destination_dir)
 
     cprint(msg="Field maps conversion done.", lvl="debug")
 
 
 def compute_fmap_path(
-    source_dir: Path, csv_dir: Path, subjs_list: list[str], conversion_dir: Path
+    source_dir: Path, csv_dir: Path, subjs_list: Iterable[str], conversion_dir: Path
 ) -> pd.DataFrame:
     """Compute the paths to fMR images.
 
@@ -97,10 +100,8 @@ def compute_fmap_path(
 
     import pandas as pd
 
-    from clinica.iotools.converters.adni_to_bids.adni_utils import (
-        find_image_path,
-        visits_to_timepoints,
-    )
+    from ._image_path_utils import find_image_path
+    from ._visits_utils import visits_to_timepoints
 
     fmap_col = [
         "Subject_ID",
@@ -173,20 +174,43 @@ def compute_fmap_path(
     # Exceptions
     # ==========
     conversion_errors = [
-        ("006_S_4485", "m84"),
-        ("123_S_4127", "m96"),
-        # Eq_1
-        ("094_S_4503", "m24"),
-        ("009_S_4388", "m72"),
-        ("036_S_6088", "bl"),
-        ("036_S_6134", "bl"),
-        ("016_S_6802", "bl"),
-        ("016_S_6816", "bl"),
-        ("126_S_4891", "m84"),
-        ("177_S_6448", "m24"),
-        ("023_S_4115", "m126"),
         # Multiple images
         ("029_S_2395", "m72"),
+        # Real/Imaginary
+        ("002_S_1261", "m60"),
+        ("002_S_1261", "m72"),
+        ("002_S_1261", "m84"),
+        ("002_S_1261", "m96"),
+        ("006_S_4485", "bl"),
+        ("006_S_4485", "m03"),
+        ("006_S_4485", "m06"),
+        ("006_S_4485", "m12"),
+        ("006_S_4485", "m24"),
+        ("006_S_4485", "m48"),
+        # Unrecognized BIDSCase
+        ("006_S_4485", "m78"),
+        ("009_S_4388", "m03"),
+        ("009_S_4388", "m06"),
+        ("009_S_4388", "m12"),
+        ("009_S_4388", "m24"),
+        ("009_S_4388", "m48"),
+        ("023_S_4115", "bl"),
+        ("023_S_4115", "m03"),
+        ("023_S_4115", "m06"),
+        ("023_S_4115", "m12"),
+        ("023_S_4115", "m24"),
+        ("023_S_4115", "m48"),
+        ("123_S_4127", "bl"),
+        ("123_S_4127", "m12"),
+        ("123_S_4127", "m24"),
+        ("123_S_4127", "m36"),
+        # Missing EchoTime Keys
+        ("006_S_4485", "m90"),
+        ("036_S_6088", "m12"),
+        ("123_S_4127", "m84"),
+        # Missing DICOMS
+        ("023_S_4115", "m126"),
+        ("177_S_6448", "m24"),
     ]
 
     # Removing known exceptions from images to convert
@@ -199,7 +223,7 @@ def compute_fmap_path(
         fmap_df.drop(error_ind, inplace=True)
 
     # Checking for images paths in filesystem
-    images = find_image_path(fmap_df, source_dir, "FMAP", "S", "Series_ID")
+    images = find_image_path(fmap_df, source_dir, "FMAP")
     images.to_csv(conversion_dir / "fmap_paths.tsv", sep="\t", index=False)
 
     return images
@@ -226,10 +250,9 @@ def fmap_image(
     Returns: dictionary - contains image metadata
              None - no image was able to be selected from the MRI list based on IDs provided
     """
-    from clinica.iotools.converters.adni_to_bids.adni_utils import (
-        replace_sequence_chars,
-        select_image_qc,
-    )
+    from clinica.iotools.converter_utils import replace_sequence_chars
+
+    from ._qc_utils import select_image_qc
 
     mri_qc_subj.columns = [x.lower() for x in mri_qc_subj.columns]
     sel_image = select_image_qc(list(visit_mri_list.IMAGEUID), mri_qc_subj)
@@ -255,6 +278,7 @@ def fmap_image(
 
 
 class BIDSFMAPCase(str, Enum):
+    ALREADY_RENAMED = "already_renamed"
     EMPTY_FOLDER = "empty_folder"
     ONE_PHASE_TWO_MAGNITUDES = "one_phase_two_magnitudes"
     TWO_PHASES_TWO_MAGNITUDES = "two_phases_two_magnitudes"
@@ -300,6 +324,8 @@ def rename_files(fmap_path: Path, case: BIDSFMAPCase):
 
 
 def fmap_case_handler_factory(case: BIDSFMAPCase) -> Callable:
+    if case == BIDSFMAPCase.ALREADY_RENAMED:
+        return already_renamed_handler
     if case == BIDSFMAPCase.EMPTY_FOLDER:
         return empty_folder_handler
     if case == BIDSFMAPCase.ONE_PHASE_TWO_MAGNITUDES:
@@ -339,6 +365,14 @@ def check_json_contains_keys(json_file: Path, keys: Iterable[str]) -> bool:
         )
         return False
     return True
+
+
+def already_renamed_handler(fmap_path: Path):
+    cprint(
+        f"Files for subject {fmap_path.parent.parent.name},"
+        f"session {fmap_path.parent.name} were already renamed.",
+        lvl="info",
+    )
 
 
 def empty_folder_handler(fmap_path: Path):
@@ -423,6 +457,8 @@ def infer_case_fmap(fmap_path: Path) -> BIDSFMAPCase:
 
     if nb_files == 0:
         return BIDSFMAPCase.EMPTY_FOLDER
+    elif all([re.search(r"magnitude|phase", f) for f in files]):
+        return BIDSFMAPCase.ALREADY_RENAMED
     elif nb_files == 4:
         if extensions == {""}:
             return BIDSFMAPCase.DIRECT_FIELDMAPS
@@ -448,31 +484,3 @@ def reorganize_fmaps(bids_path: Path):
             fmap_path = bids_path / subject / session / "fmap"
             if fmap_path.exists():
                 fmap_case_handler_factory(infer_case_fmap(fmap_path))(fmap_path)
-
-
-def bids_guess(bids_path: Path):
-    # todo : WIP - add where necessary to check
-
-    bids_path = Path(bids_path)
-
-    for file_path in bids_path.rglob(pattern=r"*.json"):
-        str_file_path = str(file_path)
-        if "fmap" in file_path.name:
-            with open(file_path, "r") as f:
-                file_json = json.load(f)
-            if "BidsGuess" in file_json:
-                bids_guess = file_json["BidsGuess"][-1].split("_")[-1]
-
-                cut = re.search(r"\S*_fmap", str_file_path).group(0)
-                os.rename(src=str_file_path, dst=cut + "_" + bids_guess + ".json")
-                os.rename(
-                    src=str_file_path.removesuffix(".json") + ".nii.gz",
-                    dst=cut + "_" + bids_guess + ".nii.gz",
-                )
-            else:
-                cprint(
-                    msg=f"The FMAP file {file_path.name} could not be renamed "
-                    f"since dcm2nix did not find any BIDS correspondence",
-                    lvl="warning",
-                )
-                # todo : delete files
