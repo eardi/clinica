@@ -443,20 +443,25 @@ def mris_expand(in_surface):
         out_file + "013",
     ]
     out_in_node = [os.path.abspath("./" + os.path.basename(x)) for x in out_filelist]
-    for i in range(len(out_filelist)):
-        shutil.move(out_filelist[i], out_in_node[i])
+    ####### Code I delete here:
+    # for i in range(len(out_filelist)):
+    #     print("mris_expand copy from WD to t1-freesufer:")
+    #     shutil.copy(out_in_node[i], out_filelist[i])
 
     # Remove useless surfaces (0%, 5%, 10%, 15%, 20%, 25% and 30% of thickness)
+    ##### Modified code below: see https://github.com/aramis-lab/clinica/issues/890
+    _to_remove = os.path.abspath("./" + os.path.basename(out_file))
     to_remove = [
-        out_file + "000",
-        out_file + "001",
-        out_file + "002",
-        out_file + "003",
-        out_file + "004",
-        out_file + "005",
-        out_file + "006",
+        _to_remove + "000",
+        _to_remove + "001",
+        _to_remove + "002",
+        _to_remove + "003",
+        _to_remove + "004",
+        _to_remove + "005",
+        _to_remove + "006",
     ]
     for i in range(len(to_remove)):
+        print("removed " + to_remove[i])
         os.remove(to_remove[i])
 
     return out_in_node

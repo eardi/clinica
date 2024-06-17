@@ -7,6 +7,7 @@ from enum import Enum
 from os import PathLike
 from pathlib import Path
 from typing import Callable, Iterable, List, Optional
+import warnings
 
 import pandas as pd
 
@@ -320,7 +321,10 @@ def get_json_file_matching_pattern(fmap_path: Path, pattern: str) -> Path:
     if len(json_file) != 1:
         msg = f"Expected only a single JSON file ending in '{pattern}' in {fmap_path}, but got:"
         msg += "\n".join([f.name for f in json_file])
-        raise ValueError(msg)
+        # EL: Change to source code. Replace error with warning and return None
+        warnings.warn(msg)
+        return None
+        #raise ValueError(msg)
     return json_file[0]
 
 
@@ -353,10 +357,13 @@ def one_phase_two_magnitudes_handler(fmap_path: Path):
         lvl="info",
     )
     json_file = get_json_file_matching_pattern(fmap_path, pattern="ph.json")
-    if check_json_contains_keys(json_file, ("EchoTime1", "EchoTime2")):
-        rename_files(fmap_path, BIDSFMAPCase.ONE_PHASE_TWO_MAGNITUDES)
-    else:
-        not_supported_handler(fmap_path)
+
+    # EL: Change to source code. Added check for json file
+    if json_file is not None:
+        if check_json_contains_keys(json_file, ("EchoTime1", "EchoTime2")):
+            rename_files(fmap_path, BIDSFMAPCase.ONE_PHASE_TWO_MAGNITUDES)
+        else:
+            not_supported_handler(fmap_path)
 
 
 def two_phases_two_magnitudes_handler(fmap_path: Path):
@@ -385,8 +392,11 @@ def direct_fieldmaps_handler(fmap_path: Path):
     )
     # Assuming filename ends with "fmap" for the fieldmap
     json_file = get_json_file_matching_pattern(fmap_path, pattern="fmap.json")
-    check_json_contains_keys(json_file, ("Units",))
-    not_supported_handler(fmap_path)
+
+    # EL: Change to source code. Added check for json file
+    if json_file is not None:
+        check_json_contains_keys(json_file, ("Units",))
+        not_supported_handler(fmap_path)
 
 
 def not_supported_handler(fmap_path: Path):
