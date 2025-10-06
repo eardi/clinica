@@ -5,8 +5,7 @@ import re
 from enum import Enum
 from os import PathLike
 from pathlib import Path
-from typing import Callable, Iterable, List, Optional
-import warnings
+from typing import Callable, Iterable, Optional
 
 import pandas as pd
 

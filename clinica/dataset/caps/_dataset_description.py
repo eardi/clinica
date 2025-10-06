@@ -27,7 +27,11 @@ __all__ = [
 
 CAPS_VERSION = Version("1.0.0")
 
-IsoDate = NewType("IsoDate", datetime)
+# IsoDate = NewType("IsoDate", datetime)
+
+class IsoDate(datetime):
+    """Custom ISO 8601 date type used for serialization."""
+    pass
 
 
 @define
@@ -286,7 +290,7 @@ def _get_machine_name() -> str:
 
 
 def _get_current_timestamp() -> IsoDate:
-    return IsoDate(datetime.now())
+    return IsoDate.now()
 
 
 def _generate_random_name() -> str:
