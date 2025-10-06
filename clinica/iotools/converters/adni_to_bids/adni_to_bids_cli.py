@@ -30,7 +30,7 @@ from .adni_utils import ADNIModality
     "--modalities",
     multiple=True,
     type=click.Choice(ADNIModality),
-    default=ADNIModality,
+    default=list(ADNIModality), #EL: Change to source ADNIModality --> list(ADNIModality), click throws an error if default is Enum
     help="Convert only the selected modality. By default, all available modalities are converted.",
 )
 @click.option(

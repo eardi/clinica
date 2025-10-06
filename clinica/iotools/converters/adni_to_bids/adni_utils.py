@@ -610,6 +610,7 @@ def _find_conversion_mod(file_name: str) -> str:
         "phasediff",
         "magnitude1",
         "magnitude2",
+        "real", # EL: Change to source to account for sub-ADNI002S0413_ses-M108_fmap_e1_imaginary_real.json
     ):
         return "fmap"
     if suffix == "pet":
