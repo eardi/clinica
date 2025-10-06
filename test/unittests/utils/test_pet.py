@@ -1,141 +1,38 @@
-import os
-from pathlib import Path
-
-import pandas as pd
 import pytest
 
-from clinica.utils.pet import SUVRReferenceRegion
+from clinica.utils.pet import Tracer
 
 
-@pytest.fixture
-def psf_df() -> pd.DataFrame:
-    return pd.DataFrame(
-        {
-            "participant_id": ["sub-CLNC01"] * 3 + ["sub-CLNC02", "sub-CLNC03"],
-            "session_id": ["ses-M000", "ses-M018"] + ["ses-M000"] * 3,
-            "acq_label": ["18FFDG", "18FFDG", "18FAV45", "18FFDG", "18FFDG"],
-            "psf_x": [8, 8, 7, 8, 8],
-            "psf_y": [9, 9, 6, 9, 9],
-            "psf_z": [10, 10, 5, 10, 10],
-        }
-    )
+@pytest.mark.parametrize(
+    "filename, expected",
+    [
+        ("sub-1_ses-1_trc-18FFDG_pet.nii.gz", Tracer.FDG),
+        ("sub-1_ses-1_acq-18FFDG_pet.nii.gz", Tracer.FDG),
+        ("sub-1_ses-1_trc-18FFDG_acq-18FFDG_pet.nii.gz", Tracer.FDG),
+        ("sub-1_ses-1_trc-11CPIB_pet.nii.gz", Tracer.PIB),
+        ("sub-1_ses-1_trc-18FFBB_pet.nii.gz", Tracer.FBB),
+        ("sub-1_ses-1_trc-18FFMM_pet.nii.gz", Tracer.FMM),
+        ("sub-1_ses-1_trc-18FAV1451_pet.nii.gz", Tracer.AV1451),
+        ("sub-1_ses-1_trc-18FAV45_pet.nii.gz", Tracer.AV45),
+    ],
+)
+def test_get_pet_tracer_from_filename_success(filename, expected):
+    from clinica.utils.pet import get_pet_tracer_from_filename
+
+    assert expected == get_pet_tracer_from_filename(filename)
 
 
-def test_read_psf_information_errors(tmp_path: Path, psf_df: pd.DataFrame):
-    from clinica.utils.pet import Tracer, read_psf_information
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "sub-1_ses-1_trc18FFDG_pet.nii.gz",
+        "sub-1_ses-1_trc-///_pet.nii.gz",
+        "sub-1_ses-1_trc-foo_pet.nii.gz",
+        "sub-1_ses-1_pet.nii.gz",
+    ],
+)
+def test_get_pet_tracer_from_filename_error(filename):
+    from clinica.utils.pet import get_pet_tracer_from_filename
 
-    with pytest.raises(
-        FileNotFoundError,
-        match="No such file or directory: 'foo.tsv'",
-    ):
-        read_psf_information(
-            Path("foo.tsv"),
-            ["sub-CLNC01", "sub-CLNC01"],
-            ["ses-M000", "ses-M018"],
-            Tracer.FDG,
-        )
-    psf_df.to_csv(tmp_path / "psf.tsv", sep="\t", index=False)
-    with pytest.raises(
-        RuntimeError,
-        match=(
-            "Subject sub-CLNC06 with session ses-M018 and tracer 18FFDG "
-            "that you want to proceed was not found in the TSV file containing "
-            "PSF specifications"
-        ),
-    ):
-        read_psf_information(
-            tmp_path / "psf.tsv",
-            ["sub-CLNC01", "sub-CLNC06"],
-            ["ses-M000", "ses-M018"],
-            Tracer.FDG,
-        )
-    psf_df_2 = pd.DataFrame(
-        {
-            "participant_id": ["sub-CLNC01"],
-            "session_id": ["ses-M000"],
-            "acq_label": ["18FFDG"],
-            "psf_x": [10],
-            "psf_y": [11],
-            "psf_z": [12],
-        }
-    )
-    duplicate_psf_df = pd.concat([psf_df, psf_df_2])
-    duplicate_psf_df.to_csv(tmp_path / "duplicate_psf.tsv", sep="\t", index=False)
-    with pytest.raises(
-        RuntimeError,
-        match=(
-            "Subject sub-CLNC01 with session ses-M000 and tracer 18FFDG "
-            "that you want to proceed was found multiple times "
-            "in the TSV file containing PSF specifications"
-        ),
-    ):
-        read_psf_information(
-            tmp_path / "duplicate_psf.tsv",
-            ["sub-CLNC01", "sub-CLNC01"],
-            ["ses-M000", "ses-M018"],
-            Tracer.FDG,
-        )
-    psf_df["foo"] = ["bar"] * 5
-    psf_df.to_csv(tmp_path / "wrong_psf.tsv", sep="\t", index=False)
-    with pytest.raises(
-        IOError,
-        match="must contain",
-    ):
-        read_psf_information(
-            tmp_path / "wrong_psf.tsv",
-            ["sub-CLNC01", "sub-CLNC01"],
-            ["ses-M000", "ses-M018"],
-            Tracer.FDG,
-        )
-    psf_df.drop(["foo", "session_id"], axis=1).to_csv(
-        tmp_path / "wrong_psf_2.tsv", sep="\t", index=False
-    )
-    with pytest.raises(
-        IOError,
-        match="must contain",
-    ):
-        read_psf_information(
-            tmp_path / "wrong_psf_2.tsv",
-            ["sub-CLNC01", "sub-CLNC01"],
-            ["ses-M000", "ses-M018"],
-            Tracer.FDG,
-        )
-
-
-def test_read_psf_information(tmp_path: Path, psf_df: pd.DataFrame):
-    from clinica.utils.pet import Tracer, read_psf_information
-
-    psf_df.to_csv(tmp_path / "psf.tsv", sep="\t", index=False)
-    assert read_psf_information(
-        tmp_path / "psf.tsv",
-        ["sub-CLNC01", "sub-CLNC01"],
-        ["ses-M000", "ses-M018"],
-        Tracer.FDG,
-    ) == [[8, 9, 10], [8, 9, 10]]
-    # Shuffle rows in dataframe and make sure results do not depend on row order
-    psf_df = psf_df.sample(frac=1).reset_index(drop=True)
-    psf_df.to_csv(tmp_path / "psf.tsv", sep="\t", index=False)
-    assert read_psf_information(
-        tmp_path / "psf.tsv",
-        ["sub-CLNC01", "sub-CLNC01"],
-        ["ses-M000", "ses-M018"],
-        Tracer.FDG,
-    ) == [[8, 9, 10], [8, 9, 10]]
-
-
-@pytest.mark.parametrize("region", SUVRReferenceRegion)
-def test_get_suvr_mask(region):
-    from clinica.utils.pet import get_suvr_mask
-
-    assert Path(get_suvr_mask(region)).exists()
-
-
-@pytest.mark.parametrize("label", ["foo", "bar", "pons3", "cerebelumPons2"])
-def test_get_suvr_mask_error(label: str):
-    from clinica.utils.pet import get_suvr_mask
-
-    with pytest.raises(
-        ValueError,
-        match=f"'{label}' is not a valid SUVRReferenceRegion",
-    ):
-        get_suvr_mask(label)
+    with pytest.raises(ValueError):
+        get_pet_tracer_from_filename(filename)

@@ -2,14 +2,18 @@ from os import PathLike
 from pathlib import Path
 from typing import Callable, List, Optional, Union
 
+from clinica.dataset import Visit
+
 __all__ = [
     "UserProvidedPath",
     "delete_directories",
     "delete_directories_task",
     "extract_crash_files_from_log_file",
     "extract_image_ids",
+    "extract_visits",
     "extract_metadata_from_json",
     "extract_subjects_sessions_from_filename",
+    "replace_special_characters_with_symbol",
     "get_filename_no_ext",
     "get_parent",
     "get_subject_id",
@@ -295,12 +299,36 @@ def get_subject_id(bids_or_caps_file: Union[str, Path]) -> str:
     return subject_id
 
 
-def get_filename_no_ext(filename: str) -> str:
+def replace_special_characters_with_symbol(input_string: str, symbol: str = "_") -> str:
+    """Replace special characters in the provided string by provided symbol.
+
+    underscores (as done for corresponding folder names in ADNI).
+
+    Parameters
+    ----------
+    input_string : str
+        The input string to work on .
+
+    symbol : str, optional
+        The symbol to use as a replacement.
+        Default="_"
+
+    Returns
+    -------
+    str :
+        The cleaned string.
+    """
+    import re
+
+    return re.sub("[ /;*()<>:]", symbol, input_string)
+
+
+def get_filename_no_ext(filename: Union[str, Path]) -> str:
     """Get the filename without the extension.
 
     Parameters
     ----------
-    filename: str
+    filename: str or Path
         The full filename from which to extract the extension out.
 
     Returns
@@ -315,11 +343,11 @@ def get_filename_no_ext(filename: str) -> str:
     >>> get_filename_no_ext("sub-01/ses-M000/sub-01_ses-M000.tar.gz")
     'sub-01_ses-M000'
     """
-    from pathlib import PurePath
-
-    stem = PurePath(filename).stem
+    if not isinstance(filename, Path):
+        filename = Path(filename)
+    stem = filename.stem
     while "." in stem:
-        stem = PurePath(stem).stem
+        stem = Path(stem).stem
 
     return stem
 
@@ -363,6 +391,13 @@ def extract_image_ids(bids_or_caps_files: list[str]) -> list[str]:
         id_bids_or_caps_files.append(match.group())
 
     return id_bids_or_caps_files
+
+
+def extract_visits(bids_or_caps_files: list[str]) -> list[Visit]:
+    return [
+        Visit(*image_id.split("_"))
+        for image_id in extract_image_ids(bids_or_caps_files)
+    ]
 
 
 def extract_subjects_sessions_from_filename(

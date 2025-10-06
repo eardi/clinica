@@ -22,9 +22,9 @@ computing a single multiplicative bias field from the corrected b0 image(s) as i
 
 ## Dependencies
 
-If you only installed the core of Clinica, the `dwi-preprocessing-*` pipeline needs the installation of [ANTs](../Third-party.md#ants), [FSL](../Third-party.md#fsl), and [MRtrix3](../Third-party.md#mrtrix3) on your computer.
+If you only installed the core of Clinica, the `dwi-preprocessing-*` pipeline needs the installation of [ANTs](../Software/Third-party.md#ants), [FSL](../Software/Third-party.md#fsl), and [MRtrix3](../Software/Third-party.md#mrtrix3) on your computer.
 
-Extra installation of [Convert3D](../Third-party.md#convert3d) will be needed for the `dwi-preprocessing-using-t1` pipeline.
+Extra installation of [Convert3D](../Software/Third-party.md#convert3d) will be needed for the `dwi-preprocessing-using-t1` pipeline.
 
 ## Running the pipeline
 
@@ -40,8 +40,7 @@ clinica run dwi-preprocessing-using-phasediff-fmap [OPTIONS] BIDS_DIRECTORY CAPS
 
 where:
 
-- `BIDS_DIRECTORY` is the input folder containing the dataset in a [BIDS](../../BIDS) hierarchy.
-- `CAPS_DIRECTORY` is the output folder containing the results in a [CAPS](../../CAPS/Introduction) hierarchy.
+--8<-- "snippets/cmd_inputs.md:bids_caps"
 
 Please note that you will need the `PhaseEncodingDirection` and `TotalReadoutTime` metadata fields in the JSON file associated to your DWI images
 (see [BIDS specifications](https://bids-specification.readthedocs.io/en/stable/04-modality-specific-files/01-magnetic-resonance-imaging-data.html#diffusion-imaging-data) for more details).
@@ -49,7 +48,8 @@ For the `dwi-preprocessing-using-phasediff-fmap`pipeline, you will also need the
 (see [BIDS specifications](https://bids-specification.readthedocs.io/en/stable/04-modality-specific-files/01-magnetic-resonance-imaging-data.html#phase-difference-image-and-at-least-one-magnitude-image)).
 Without these metadata fields, the pipelines will not run.
 
-If you want to run the pipeline on a subset of your BIDS dataset, you can use the `-tsv` flag to specify in a TSV file the participants belonging to your subset.
+??? info "Optional parameters common to all pipelines"
+    --8<-- "snippets/pipelines_options.md:all"
 
 !!! tip "Decreasing computation time"
     By default, the `eddy` tool of FSL uses OpenMP for parallel computing.

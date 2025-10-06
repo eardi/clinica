@@ -1,4 +1,7 @@
 <!-- markdownlint-disable MD007 MD033 -->
+
+--8<-- "snippets/spm_banner.md"
+
 # `t1-volume` – Volume-based processing of T1-weighted MR images with SPM
 
 This pipeline performs four main processing steps on T1-weighted MR images using the [SPM](http://www.fil.ion.ucl.ac.uk/spm/) software:
@@ -23,7 +26,7 @@ The average gray matter density (also in MNI space) is then computed in each of 
 
 ## Dependencies
 
-If you only installed the core of Clinica, this pipeline needs the installation of either [SPM12](../Third-party.md#spm12) and [Matlab](../Third-party.md#matlab), or [SPM standalone](../Third-party.md#spm12-standalone) on your computer.
+If you only installed the core of Clinica, this pipeline needs the installation of either [SPM12](../Software/Third-party.md#spm12) and [Matlab](../Software/Third-party.md#matlab), or [SPM standalone](../Software/Third-party.md#spm12-standalone) on your computer.
 
 ## Running the pipeline
 
@@ -35,26 +38,23 @@ clinica run t1-volume [OPTIONS] BIDS_DIRECTORY CAPS_DIRECTORY GROUP_LABEL
 
 where:
 
-- `BIDS_DIRECTORY` is the input folder containing the dataset in a [BIDS](../../BIDS) hierarchy.
-- `CAPS_DIRECTORY` is the output folder containing the results in a [CAPS](../../CAPS/Introduction) hierarchy.
+--8<-- "snippets/cmd_inputs.md:bids_caps"
 - `GROUP_LABEL` is the user-defined identifier for the provided group of subjects.
 
 Pipeline options:
 
-- `--smooth`: a list of integers specifying the different isomorphic full width at half maximum (FWHM) in millimeters used to smooth the images.
-Default value is: `8`.
-- `--tissue_classes`: a list of integers (possible values range from 1 to 6) that indicates the tissue classes to save after segmentation (in order: gray matter (GM), white matter (WM), cerebrospinal fluid (CSF), bone, soft-tissue, air/background).
-Default value is: `1, 2, 3` (GM, WM and CSF are saved).
-- `--dartel_tissues`: a list of integers (possible values range from 1 to 6) that indicates the tissue classes to use for the Dartel template calculation (in order: GM, WM, CSF, bone, soft-tissue, air/background).
-Default value is: `1, 2, 3` (GM, WM and CSF are used).
-- `--modulate / --no-modulate`: a flag.
-If enabled, output images are modulated and volumes are preserved.
-If disabled, they are not modulated and concentrations are preserved.
-Default value: `--modulate`.
+- `--smooth`: a list of integers specifying the different isomorphic [full width at half maximum (FWHM)](../glossary.md#fwhm) in millimeters used to smooth the images. Default value is: `8`.
+- `--tissue_classes`: a list of integers (possible values range from 1 to 6) that indicates the tissue classes to save after segmentation (in order: gray matter (GM), white matter (WM), cerebrospinal fluid (CSF), bone, soft-tissue, air/background). Default value is: `1, 2, 3` (GM, WM and CSF are saved).
+- `--dartel_tissues`: a list of integers (possible values range from 1 to 6) that indicates the tissue classes to use for the Dartel template calculation (in order: GM, WM, CSF, bone, soft-tissue, air/background). Default value is: `1, 2, 3` (GM, WM and CSF are used).
+- `--modulate / --no-modulate`: a flag. If enabled, output images are modulated and volumes are preserved. If disabled, they are not modulated and concentrations are preserved. Default value: `--modulate`.
 
-!!! note
-    - The arguments common to all Clinica pipelines are described in [Interacting with clinica](../../InteractingWithClinica).
-    - The creation of a new Dartel template, performed in the `t1-volume` pipeline, requires at least two images.
+??? info "Optional parameters common to all pipelines"
+    --8<-- "snippets/pipelines_options.md:all"
+
+--8<-- "snippets/known_issues.md:center-nifti"
+
+!!! warning "Dartel Template"
+    The creation of a new Dartel template performed in the `t1-volume` pipeline requires at least two images.
 
 !!! tip
     Do not hesitate to type `t1-volume --help` to see the full list of parameters.

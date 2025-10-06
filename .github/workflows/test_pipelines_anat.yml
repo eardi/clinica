@@ -3,65 +3,60 @@ name: Anat Pipelines Tests
 on:
   schedule:
     - cron: 0 20 * * 4 # every thursday at 8pm
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-env:
-  POETRY_VERSION: '1.6.1'
-  PYTHON_VERSION: '3.10'
-
 jobs:
-  test-t1-linear-MacOS:
-    runs-on:
-      - self-hosted
-      - macOS
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v4
-      - uses: snok/install-poetry@v1
-      - name: Run tests for t1 linear pipelines
-        run: |
-          make env.conda
-          source ~/miniconda3/etc/profile.d/conda.sh
-          conda activate "${{ github.workspace }}"/env
-          source "$(brew --prefix)/opt/modules/init/bash"
-          module load clinica/ants/2.4.4
-          make install
-          cd test
-          poetry run pytest --verbose \
-          --working_directory=/Volumes/data/working_dir_mac \
-          --input_data_directory=/Volumes/data_ci \
-          --basetemp=/Volumes/data/tmp \
-          --junitxml=./test-reports/non_regression_anat_t1_linear_mac.xml \
-          --disable-warnings \
-          ./nonregression/pipelines/anat/test_t1_linear.py
-
-  test-t1-volume-MacOS:
-    runs-on:
-      - self-hosted
-      - macOS
-    timeout-minutes: 720
-    steps:
-      - uses: actions/checkout@v4
-      - uses: snok/install-poetry@v1
-      - name: Run tests for t1 volume pipelines
-        run: |
-          make env.conda
-          source ~/miniconda3/etc/profile.d/conda.sh
-          conda activate "${{ github.workspace }}"/env
-          source "$(brew --prefix)/opt/modules/init/bash"
-          module load clinica/matlab/2019b
-          module load clinica/spm12/r7771
-          make install
-          cd test
-          poetry run pytest --verbose \
-          --working_directory=/Volumes/data/working_dir_mac \
-          --input_data_directory=/Volumes/data_ci \
-          --basetemp=/Volumes/data/tmp \
-          --junitxml=./test-reports/non_regression_anat_t1_volume_mac.xml \
-          --disable-warnings \
-          ./nonregression/pipelines/anat/test_t1_volume.py
+#  test-t1-linear-MacOS:
+#    runs-on:
+#      - self-hosted
+#      - macOS
+#    timeout-minutes: 120
+#    steps:
+#      - uses: actions/checkout@v4
+#      - name: Run tests for t1 linear pipelines
+#        run: |
+#          make env.conda
+#          source ~/miniconda3/etc/profile.d/conda.sh
+#          conda activate "${{ github.workspace }}"/env
+#          source "$(brew --prefix)/opt/modules/init/bash"
+#          module load clinica/ants/2.4.4
+#          make install
+#          cd test
+#          poetry run pytest --verbose \
+#          --working_directory=/Volumes/data/working_dir_mac \
+#          --input_data_directory=/Volumes/data_ci \
+#          --basetemp=/Volumes/data/tmp \
+#          --junitxml=./test-reports/non_regression_anat_t1_linear_mac.xml \
+#          --disable-warnings \
+#          ./nonregression/pipelines/anat/test_t1_linear.py
+#
+#  test-t1-volume-MacOS:
+#    runs-on:
+#      - self-hosted
+#      - macOS
+#    timeout-minutes: 720
+#    steps:
+#      - uses: actions/checkout@v4
+#      - name: Run tests for t1 volume pipelines
+#        run: |
+#          make env.conda
+#          source ~/miniconda3/etc/profile.d/conda.sh
+#          conda activate "${{ github.workspace }}"/env
+#          source "$(brew --prefix)/opt/modules/init/bash"
+#          module load clinica/matlab/2019b
+#          module load clinica/spm12/r7771
+#          make install
+#          cd test
+#          poetry run pytest --verbose \
+#          --working_directory=/Volumes/data/working_dir_mac \
+#          --input_data_directory=/Volumes/data_ci \
+#          --basetemp=/Volumes/data/tmp \
+#          --junitxml=./test-reports/non_regression_anat_t1_volume_mac.xml \
+#          --disable-warnings \
+#          ./nonregression/pipelines/anat/test_t1_volume.py
 
   test-t1-linear-Linux:
     runs-on:
@@ -71,14 +66,6 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-      - uses: snok/install-poetry@v1
-        with:
-          version: ${{ env.POETRY_VERSION }}
-          virtualenvs-create: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: poetry
       - name: Run tests for t1 linear pipelines
         run: |
           make env.conda
@@ -104,22 +91,13 @@ jobs:
     timeout-minutes: 720
     steps:
       - uses: actions/checkout@v4
-      - uses: snok/install-poetry@v1
-        with:
-          version: ${{ env.POETRY_VERSION }}
-          virtualenvs-create: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: poetry
       - name: Run tests for t1 volume pipelines
         run: |
           make env.conda
           source /builds/miniconda/etc/profile.d/conda.sh
           conda activate "${{ github.workspace }}"/env
           source /usr/local/Modules/init/profile.sh
-          module load clinica/matlab/2017a
-          module load clinica/spm12/r7771
+          module load clinica.all
           make install
           cd test
           poetry run pytest --verbose \

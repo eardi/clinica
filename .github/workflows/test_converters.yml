@@ -13,39 +13,27 @@ concurrency:
   group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
   cancel-in-progress: true
 
-env:
-  POETRY_VERSION: '1.6.1'
-  PYTHON_VERSION: '3.10'
-
 jobs:
-  test-converters-MacOS:
-    runs-on:
-      - self-hosted
-      - macOS
-    steps:
-      - uses: actions/checkout@v4
-      - uses: snok/install-poetry@v1
-        with:
-          version: ${{ env.POETRY_VERSION }}
-          virtualenvs-create: false
-      - name: Run non-regression tests for converters
-        run: |
-          make env.conda
-          source ~/miniconda3/etc/profile.d/conda.sh
-          conda activate "${{ github.workspace }}"/env
-          make install
-          cd test
-          poetry run pytest --verbose \
-          --working_directory=/Volumes/data/working_dir_mac \
-          --input_data_directory=/Volumes/data_ci \
-          --basetemp=/Volumes/data/tmp \
-          --junitxml=./test-reports/run_converters_mac.xml \
-          --disable-warnings \
-          ./nonregression/iotools/test_run_converters.py
-      - name: Clean
-        run: |
-          rm -rf /Volumes/data/tmp
-          rm -rf /Volumes/data/working_dir_mac
+#  test-converters-MacOS:
+#    runs-on:
+#      - self-hosted
+#      - macOS
+#    steps:
+#      - uses: actions/checkout@v4
+#      - name: Run non-regression tests for converters
+#        run: |
+#          make env.conda
+#          source ~/miniconda3/etc/profile.d/conda.sh
+#          conda activate "${{ github.workspace }}"/env
+#          make install
+#          cd test
+#          poetry run pytest --verbose \
+#          --working_directory=/Volumes/data/working_dir_mac \
+#          --input_data_directory=/Volumes/data_ci \
+#          --basetemp=/Volumes/data/tmp \
+#          --junitxml=./test-reports/run_converters_mac.xml \
+#          --disable-warnings \
+#          ./nonregression/iotools/test_run_converters.py
 
   test-converters-Linux:
     runs-on:
@@ -54,14 +42,6 @@ jobs:
       - test-runner
     steps:
       - uses: actions/checkout@v4
-      - uses: snok/install-poetry@v1
-        with:
-          version: ${{ env.POETRY_VERSION }}
-          virtualenvs-create: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: poetry
       - name: Run non-regression tests for converters
         run: |
           make env.conda
@@ -75,8 +55,4 @@ jobs:
           --basetemp=/mnt/data/ci/tmp \
           --junitxml=./test-reports/run_converters_linux.xml \
           --disable-warnings \
-          ./nonregression/iotools/test_run_converters.py
-      - name: Clean
-        run: |
-          rm -rf /mnt/data/ci/tmp
-          rm -rf /mnt/data/ci/working_dir_linux
+          ./nonregression/test_run_converters.py

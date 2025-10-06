@@ -3,23 +3,30 @@
 import hashlib
 import os
 from collections import namedtuple
-from enum import Enum
 from functools import partial
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Iterable, Optional, Sequence, Union
 
-
-class DatasetType(str, Enum):
-    """Defines the possible types of datasets in Clinica."""
-
-    RAW = "raw"
-    DERIVATIVE = "derivative"
-
+__all__ = [
+    "RemoteFileStructure",
+    "InvalidSubjectSession",
+    "insensitive_glob",
+    "find_images_path",
+    "clinica_file_filter",
+    "clinica_file_reader",
+    "format_clinica_file_reader_errors",
+    "clinica_list_of_files_reader",
+    "clinica_group_reader",
+    "fetch_file",
+    "compute_sha256_hash",
+    "get_file_from_server",
+]
 
 RemoteFileStructure = namedtuple("RemoteFileStructure", ["filename", "url", "checksum"])
+InvalidSubjectSession = namedtuple("InvalidSubjectSession", ["subject", "session"])
 
 
-def insensitive_glob(pattern_glob: str, recursive: Optional[bool] = False) -> List[str]:
+def insensitive_glob(pattern_glob: str, recursive: Optional[bool] = False) -> list[str]:
     """This function is the glob.glob() function that is insensitive to the case.
 
     Parameters
@@ -44,243 +51,17 @@ def insensitive_glob(pattern_glob: str, recursive: Optional[bool] = False) -> Li
     return glob("".join(map(either, pattern_glob)), recursive=recursive)
 
 
-def determine_caps_or_bids(input_dir: os.PathLike) -> bool:
-    """Determine if the `input_dir` is a CAPS or a BIDS folder.
-
-    Parameters
-    ----------
-    input_dir : os.PathLike
-        The input folder.
-
-    Returns
-    -------
-    bool :
-        True if `input_dir` is a BIDS folder, False if `input_dir`
-        is a CAPS folder or could not be determined.
-    """
-    input_dir = Path(input_dir)
-    subjects_dir = input_dir / "subjects"
-    groups_dir = input_dir / "groups"
-
-    dir_to_look = subjects_dir if subjects_dir.is_dir() else input_dir
-    subjects_sub_folders = _list_subjects_sub_folders(dir_to_look, groups_dir)
-    if subjects_dir.is_dir():
-        return False
-    return len(subjects_sub_folders) > 0
-
-
-def _list_subjects_sub_folders(
-    root_dir: os.PathLike, groups_dir: os.PathLike
-) -> List[os.PathLike]:
-    from clinica.utils.stream import cprint
-
-    root_dir = Path(root_dir)
-    groups_dir = Path(groups_dir)
-    warning_msg = (
-        f"Could not determine if {groups_dir.parent} is a CAPS or BIDS directory. "
-        "Clinica will assume this is a CAPS directory."
-    )
-    folder_content = [f for f in root_dir.iterdir()]
-    subjects_sub_folders = [
-        sub for sub in folder_content if (sub.name.startswith("sub-") and sub.is_dir())
-    ]
-    if len(subjects_sub_folders) == 0 and not groups_dir.is_dir():
-        cprint(msg=warning_msg, lvl="warning")
-    return subjects_sub_folders
-
-
-def _validate_folder_existence(
-    directory: Union[str, os.PathLike],
-    folder_type: DatasetType,
-) -> Path:
-    """Utility function which performs checks common to BIDS and CAPS folder structures.
-
-    Parameters
-    ----------
-    directory : PathLike or str
-        Directory to check.
-
-    folder_type : DatasetType
-        The type of directory.
-
-    Returns
-    -------
-    Path :
-        The directory as a Path.
-    """
-    from clinica.utils.exceptions import ClinicaBIDSError, ClinicaCAPSError
-
-    try:
-        directory = Path(directory)
-    except TypeError:
-        raise TypeError(
-            f"Argument you provided to check_{folder_type.value.lower()}_folder() is not a valid folder name."
-        )
-
-    if not directory.is_dir():
-        raise (
-            ClinicaBIDSError if folder_type == DatasetType.RAW else ClinicaCAPSError
-        )(
-            f"The {folder_type.value} directory you gave is not a folder.\n"
-            "Error explanations:\n"
-            f"\t- Clinica expected the following path to be a folder: {directory}\n"
-            "\t- If you gave relative path, did you run Clinica on the good folder?"
-        )
-
-    return directory
-
-
-_validate_bids_folder_existence = partial(
-    _validate_folder_existence, folder_type=DatasetType.RAW
-)
-_validate_caps_folder_existence = partial(
-    _validate_folder_existence, folder_type=DatasetType.DERIVATIVE
-)
-
-
-def check_bids_folder(bids_directory: Union[str, os.PathLike]) -> None:
-    """Check if provided `bids_directory` is a BIDS folder.
-
-    Parameters
-    ----------
-    bids_directory : PathLike
-        The input folder to check.
-
-    Raises
-    ------
-    ValueError :
-        If `bids_directory` is not a string.
-
-    ClinicaBIDSError :
-        If the provided path does not exist, or is not a directory.
-        If the provided path is a CAPS folder (BIDS and CAPS could
-        be swapped by user). We simply check that there is not a folder
-        called 'subjects' in the provided path (that exists in CAPS hierarchy).
-        If the provided folder is empty.
-        If the provided folder does not contain at least one directory whose
-        name starts with 'sub-'.
-    """
-    bids_directory = _validate_bids_folder_existence(bids_directory)
-    _check_dataset_description_exists_in_bids(bids_directory)
-    _check_bids_is_not_caps(bids_directory)
-    _check_bids_is_not_empty(bids_directory)
-    _check_bids_has_at_least_one_subject_folder(bids_directory)
-
-
-def _check_dataset_description_exists(directory: Path, folder_type: DatasetType):
-    from clinica.utils.exceptions import ClinicaBIDSError, ClinicaCAPSError
-
-    if not (directory / "dataset_description.json").exists():
-        raise (
-            ClinicaBIDSError if folder_type == DatasetType.RAW else ClinicaCAPSError
-        )(
-            f"The {folder_type.value} directory ({directory}) you provided is missing "
-            "a dataset_description.json file."
-        )
-
-
-_check_dataset_description_exists_in_bids = partial(
-    _check_dataset_description_exists, folder_type=DatasetType.RAW
-)
-_check_dataset_description_exists_in_caps = partial(
-    _check_dataset_description_exists, folder_type=DatasetType.DERIVATIVE
-)
-
-
-def _check_bids_is_not_caps(bids_directory: Path):
-    from clinica.utils.exceptions import ClinicaBIDSError
-
-    if (bids_directory / "subjects").is_dir():
-        raise ClinicaBIDSError(
-            f"The BIDS directory ({bids_directory}) you provided seems to "
-            "be a CAPS directory due to the presence of a 'subjects' folder."
-        )
-
-
-def _check_bids_is_not_empty(bids_directory: Path):
-    from clinica.utils.exceptions import ClinicaBIDSError
-
-    if (
-        len(
-            [
-                f
-                for f in bids_directory.iterdir()
-                if f.name != "dataset_description.json"
-            ]
-        )
-        == 0
-    ):
-        raise ClinicaBIDSError(
-            f"The BIDS directory you provided is empty. ({bids_directory})."
-        )
-
-
-def _check_bids_has_at_least_one_subject_folder(bids_directory: Path):
-    from clinica.utils.exceptions import ClinicaBIDSError
-
-    if len([f for f in bids_directory.iterdir() if f.name.startswith("sub-")]) == 0:
-        raise ClinicaBIDSError(
-            "Your BIDS directory does not contains a single folder whose name "
-            "starts with 'sub-'. Check that your folder follow BIDS standard."
-        )
-
-
-def check_caps_folder(caps_directory: Union[str, os.PathLike]) -> None:
-    """Check if provided `caps_directory`is a CAPS folder.
-
-    Parameters
-    ----------
-    caps_directory : os.PathLike
-        The input folder to check.
-
-    Raises
-    ------
-    ValueError :
-        If `caps_directory` is not a string.
-
-    ClinicaCAPSError :
-        If the provided path does not exist, or is not a directory.
-        If the provided path is a BIDS folder (BIDS and CAPS could be
-        swapped by user). We simply check that there is not a folder
-        whose name starts with 'sub-' in the provided path (that exists
-        in BIDS hierarchy).
-
-    Notes
-    -----
-    Keep in mind that a CAPS folder can be empty.
-    """
-    from clinica.utils.exceptions import ClinicaCAPSError
-
-    caps_directory = _validate_caps_folder_existence(caps_directory)
-
-    sub_folders = [f for f in caps_directory.iterdir() if f.name.startswith("sub-")]
-    if len(sub_folders) > 0:
-        error_string = (
-            "Your CAPS directory contains at least one folder whose name "
-            "starts with 'sub-'. Check that you did not swap BIDS and CAPS folders.\n"
-            "Folder(s) found that match(es) BIDS architecture:\n"
-        )
-        for directory in sub_folders:
-            error_string += f"\t{directory}\n"
-        error_string += (
-            "A CAPS directory has a folder 'subjects' at its root, in which "
-            "are stored the output of the pipeline for each subject."
-        )
-        raise ClinicaCAPSError(error_string)
-
-
-def find_sub_ses_pattern_path(
+def find_images_path(
     input_directory: os.PathLike,
     subject: str,
     session: str,
-    error_encountered: list,
-    results: list,
+    errors: list[InvalidSubjectSession],
+    valid_paths: list[str],
     is_bids: bool,
     pattern: str,
 ) -> None:
-    """Appends the output path corresponding to subject, session and pattern in results.
-
-    If an error is encountered, its corresponding message is added to the list `error_encountered`.
+    """Appends the resulting path corresponding to subject, session and pattern in valid_paths.
+    If an error is encountered, its (subject,session) couple is added to the list `errors`.
 
     Parameters
     ----------
@@ -299,10 +80,10 @@ def find_sub_ses_pattern_path(
     session : str
         Name given to the folder of a session (ex: ses-M00).
 
-    error_encountered : List
+    errors : List
         List to which errors encountered in this function are added.
 
-    results : List
+    valid_paths : List
         List to which the output path corresponding to subject, session
         and pattern is added.
 
@@ -342,20 +123,17 @@ def find_sub_ses_pattern_path(
                 f"Clinica will proceed with the latest run available, that is \n\n-{selected}.",
                 lvl="warning",
             )
-            results.append(selected)
+            valid_paths.append(selected)
         else:
-            error_str = f"\t*  ({subject} | {session}): More than 1 file found:\n"
-            for found_file in current_glob_found:
-                error_str += f"\t\t{found_file}\n"
-            error_encountered.append(error_str)
+            errors.append(InvalidSubjectSession(subject, session))
     elif len(current_glob_found) == 0:
-        error_encountered.append(f"\t* ({subject} | {session}): No file found\n")
+        errors.append(InvalidSubjectSession(subject, session))
     # Otherwise the file found is added to the result
     else:
-        results.append(current_glob_found[0])
+        valid_paths.append(current_glob_found[0])
 
 
-def _are_multiple_runs(files: List[str]) -> bool:
+def _are_multiple_runs(files: list[str]) -> bool:
     """Returns whether the files in the provided list only differ through their run number.
 
     The provided files must have exactly the same parent paths, extensions, and BIDS entities
@@ -396,7 +174,7 @@ def _are_multiple_runs(files: List[str]) -> bool:
     return True
 
 
-def _get_entities(files: List[Path], common_suffix: str) -> dict:
+def _get_entities(files: list[Path], common_suffix: str) -> dict:
     """Compute a dictionary where the keys are entity names and the values
     are sets of all the corresponding entity values found while iterating over
     the provided files.
@@ -431,7 +209,7 @@ def _get_entities(files: List[Path], common_suffix: str) -> dict:
 
 
 def _check_common_properties_of_files(
-    files: List[Path],
+    files: list[Path],
     property_name: str,
     property_extractor: Callable,
 ) -> str:
@@ -503,7 +281,7 @@ _check_common_suffix = partial(
 )
 
 
-def _select_run(files: List[str]) -> str:
+def _select_run(files: list[str]) -> str:
     import numpy as np
 
     runs = [int(_get_run_number(f)) for f in files]
@@ -519,7 +297,7 @@ def _get_run_number(filename: str) -> str:
     raise ValueError(f"Filename {filename} should contain one and only one run entity.")
 
 
-def _check_information(information: Dict) -> None:
+def _check_information(information: dict) -> None:
     if not isinstance(information, (dict, list)):
         raise TypeError(
             "A dict or list of dicts must be provided for the argument 'information'"
@@ -568,29 +346,76 @@ def _check_information(information: Dict) -> None:
             )
 
 
-def _format_errors(errors: List, information: Dict) -> str:
-    error_message = (
+def clinica_file_filter(
+    subjects: list[str],
+    sessions: list[str],
+    input_directory: Path,
+    information: dict,
+    n_procs: int = 1,
+) -> tuple[list[str], list[str], list[str]]:
+    from clinica.utils.stream import cprint
+
+    files, errors = clinica_file_reader(
+        subjects, sessions, input_directory, information, n_procs
+    )
+    cprint(format_clinica_file_reader_errors(errors, information), "warning")
+    filtered_subjects, filtered_sessions = _remove_sub_ses_from_list(
+        subjects, sessions, errors
+    )
+    return files, filtered_subjects, filtered_sessions
+
+
+def format_clinica_file_reader_errors(
+    errors: Sequence[InvalidSubjectSession], information: dict
+) -> str:
+    message = (
         f"Clinica encountered {len(errors)} "
         f"problem(s) while getting {information['description']}:\n"
     )
     if "needed_pipeline" in information and information["needed_pipeline"]:
-        error_message += (
+        message += (
             "Please note that the following clinica pipeline(s) must "
             f"have run to obtain these files: {information['needed_pipeline']}\n"
         )
-    error_message += "\n".join(errors)
+    if errors:
+        message += "".join(f"\t* ({err.subject} | {err.session})\n" for err in errors)
+        message += (
+            "Clinica could not identify which file to use (missing or too many) for these sessions. "
+            "They will not be processed."
+        )
+    return message
 
-    return error_message
+
+def _remove_sub_ses_from_list(
+    subjects: list[str],
+    sessions: list[str],
+    errors: Iterable[InvalidSubjectSession],
+) -> tuple[list[str], list[str]]:
+    subjects = subjects.copy()
+    sessions = sessions.copy()
+    for invalid in errors:
+        sub_indexes = [
+            i for i, subject in enumerate(subjects) if subject == invalid.subject
+        ]
+        session_indexes = [
+            i for i, session in enumerate(sessions) if session == invalid.session
+        ]
+        to_remove = list(set(sub_indexes) & set(session_indexes))
+        to_remove.sort(reverse=True)
+        for index in to_remove:
+            subjects.pop(index)
+            sessions.pop(index)
+    return subjects, sessions
 
 
+# todo : generalize
 def clinica_file_reader(
-    subjects: List[str],
-    sessions: List[str],
+    subjects: Sequence[str],
+    sessions: Sequence[str],
     input_directory: os.PathLike,
-    information: Dict,
-    raise_exception: Optional[bool] = True,
-    n_procs: Optional[int] = 1,
-):
+    information: dict,
+    n_procs: int = 1,
+) -> tuple[list[str], list[InvalidSubjectSession]]:
     """Read files in BIDS or CAPS directory based on participant ID(s).
 
     This function grabs files relative to a subject and session list according to a glob pattern (using *)
@@ -615,10 +440,6 @@ def clinica_file_reader(
             - `needed_pipeline` : Optional. String describing the pipeline(s)
               needed to obtain the related file.
 
-    raise_exception : bool, optional
-        If True, an exception is raised if errors happen. If not, we return the file
-        list as it is. Default=True.
-
     n_procs : int, optional
         Number of cores used to fetch files in parallel.
         If set to 1, subjects and sessions will be processed sequentially.
@@ -628,9 +449,8 @@ def clinica_file_reader(
     -------
     results : List[str]
         List of files respecting the subject/session order provided in input.
-
-    error_message : str
-        Error message which contains all errors encountered while reading the files.
+              Iterable[InvalidSubjectSession]
+        List of tuples (subject, session) which were identified as invalid (too many files or none).
 
     Raises
     ------
@@ -642,25 +462,10 @@ def clinica_file_reader(
         for more details.
         If the length of `subjects` is different from the length of `sessions`.
 
-    ClinicaCAPSError or ClinicaBIDSError
-        If multiples files are found for 1 subject/session, or if no file is found.
-
-        .. note::
-            If `raise_exception` is False, no exception is raised.
-
     Notes
     -----
     This function is case-insensitive, meaning that the pattern argument can, for example,
     contain upper case letters that do not exist in the existing file path.
-
-    You should always use `clinica_file_reader` in the following manner:
-
-    .. code-block:: python
-
-         try:
-            file_list = clinica_file_reader(...)
-         except ClinicaException as e:
-            # Deal with the error
 
     Examples
     --------
@@ -724,52 +529,35 @@ def clinica_file_reader(
     or even more precise: 't1/freesurfer_cross_sectional/sub-*_ses-*/surf/rh.white'
     It then gives: ['/caps/subjects/sub-ADNI011S4105/ses-M00/t1/freesurfer_cross_sectional/sub-ADNI011S4105_ses-M00/surf/rh.white']
     """
-    from clinica.utils.exceptions import ClinicaBIDSError, ClinicaCAPSError
-
-    _check_information(information)
-    pattern = information["pattern"]
+    from clinica.dataset import DatasetType, check_dataset, get_dataset_type
 
     input_directory = Path(input_directory)
-    is_bids = determine_caps_or_bids(input_directory)
-    if is_bids:
-        check_bids_folder(input_directory)
-    else:
-        check_caps_folder(input_directory)
-
+    _check_information(information)
+    pattern = information["pattern"]
+    check_dataset(input_directory)
     if len(subjects) != len(sessions):
         raise ValueError("Subjects and sessions must have the same length.")
-
     if len(subjects) == 0:
-        return [], ""
-
+        return [], []
     file_reader = _read_files_parallel if n_procs > 1 else _read_files_sequential
-    results, errors_encountered = file_reader(
+    return file_reader(
         input_directory,
         subjects,
         sessions,
-        is_bids,
+        get_dataset_type(input_directory) == DatasetType.RAW,
         pattern,
         n_procs=n_procs,
     )
-    error_message = _format_errors(errors_encountered, information)
-
-    if len(errors_encountered) > 0 and raise_exception:
-        if is_bids:
-            raise ClinicaBIDSError(error_message)
-        else:
-            raise ClinicaCAPSError(error_message)
-
-    return results, error_message
 
 
 def _read_files_parallel(
     input_directory: os.PathLike,
-    subjects: List[str],
-    sessions: List[str],
+    subjects: Sequence[str],
+    sessions: Sequence[str],
     is_bids: bool,
     pattern: str,
     n_procs: int,
-) -> Tuple[List[str], List[str]]:
+) -> tuple[list[str], list[InvalidSubjectSession]]:
     from multiprocessing import Manager
 
     from joblib import Parallel, delayed
@@ -778,7 +566,7 @@ def _read_files_parallel(
     shared_results = manager.list()
     shared_errors_encountered = manager.list()
     Parallel(n_jobs=n_procs)(
-        delayed(find_sub_ses_pattern_path)(
+        delayed(find_images_path)(
             input_directory,
             sub,
             ses,
@@ -796,27 +584,27 @@ def _read_files_parallel(
 
 def _read_files_sequential(
     input_directory: os.PathLike,
-    subjects: List[str],
-    sessions: List[str],
+    subjects: Iterable[str],
+    sessions: Iterable[str],
     is_bids: bool,
     pattern: str,
     **kwargs,
-) -> Tuple[List[str], List[str]]:
+) -> tuple[list[str], list[InvalidSubjectSession]]:
     errors_encountered, results = [], []
     for sub, ses in zip(subjects, sessions):
-        find_sub_ses_pattern_path(
+        find_images_path(
             input_directory, sub, ses, errors_encountered, results, is_bids, pattern
         )
     return results, errors_encountered
 
 
 def clinica_list_of_files_reader(
-    participant_ids: List[str],
-    session_ids: List[str],
+    participant_ids: list[str],
+    session_ids: list[str],
     bids_or_caps_directory: os.PathLike,
-    list_information: List[Dict],
+    list_information: Iterable[dict],
     raise_exception: Optional[bool] = True,
-) -> List[List[str]]:
+) -> list[list[str]]:
     """Read list of BIDS or CAPS files.
 
     This function iterates calls of `clinica_file_reader` to extract input files based
@@ -846,29 +634,24 @@ def clinica_list_of_files_reader(
     list_found_files : List[List[str]]
         List of lists of found files following order of `list_information`
     """
-    from .exceptions import ClinicaBIDSError, ClinicaException
+    from .exceptions import ClinicaBIDSError
 
     all_errors = []
     list_found_files = []
     for info_file in list_information:
-        try:
-            list_found_files.append(
-                clinica_file_reader(
-                    participant_ids,
-                    session_ids,
-                    bids_or_caps_directory,
-                    info_file,
-                    True,
-                )[0]
-            )
-        except ClinicaException as e:
-            list_found_files.append([])
-            all_errors.append(e)
+        files, errors = clinica_file_reader(
+            participant_ids,
+            session_ids,
+            bids_or_caps_directory,
+            info_file,
+        )
+        all_errors.append(errors)
+        list_found_files.append([] if errors else files)
 
-    if len(all_errors) > 0 and raise_exception:
+    if any(all_errors) and raise_exception:
         error_message = "Clinica faced error(s) while trying to read files in your BIDS or CAPS directory.\n"
-        for msg in all_errors:
-            error_message += str(msg)
+        for error, info in zip(all_errors, list_information):
+            error_message += format_clinica_file_reader_errors(error, info)
         raise ClinicaBIDSError(error_message)
 
     return list_found_files
@@ -876,7 +659,7 @@ def clinica_list_of_files_reader(
 
 def clinica_group_reader(
     caps_directory: os.PathLike,
-    information: Dict,
+    information: dict,
     raise_exception: Optional[bool] = True,
 ) -> str:
     """Read files from CAPS directory based on group ID(s).
@@ -913,10 +696,12 @@ def clinica_group_reader(
     ClinicaCAPSError :
         If no file is found, or more than 1 files are found.
     """
+    from clinica.dataset import check_caps_dataset
+
     _check_information(information)
     pattern = information["pattern"]
     caps_directory = Path(caps_directory)
-    check_caps_folder(caps_directory)
+    check_caps_dataset(caps_directory)
 
     current_pattern = caps_directory / "**" / pattern
     found_files = insensitive_glob(str(current_pattern), recursive=True)
@@ -931,9 +716,10 @@ def clinica_group_reader(
 
 def _format_and_raise_group_reader_errors(
     caps_directory: os.PathLike,
-    found_files: List,
-    information: Dict,
+    found_files: list,
+    information: dict,
 ) -> None:
+    # todo : TEST
     from clinica.utils.exceptions import ClinicaCAPSError
 
     error_string = (

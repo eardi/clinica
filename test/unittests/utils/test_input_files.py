@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from clinica.pipelines.dwi.dti.utils import DTIBasedMeasure
+from clinica.utils.dwi import DTIBasedMeasure
 from clinica.utils.pet import ReconstructionMethod, Tracer
 
 
@@ -40,30 +40,40 @@ def test_aggregator():
         toy_func_3((1, 2, 3), z=(4, 5))
 
 
-def test_bids_pet_nii_empty():
+@pytest.mark.parametrize(
+    "tracer, reconstruction, expected",
+    [
+        (None, None, {"pattern": Path("pet/*_pet.nii*"), "description": "PET data"}),
+        (
+            Tracer.FDG,
+            None,
+            {
+                "pattern": Path("pet/*_trc-18FFDG*_pet.nii*"),
+                "description": "PET data with 18FFDG tracer",
+            },
+        ),
+        (
+            None,
+            ReconstructionMethod.STATIC,
+            {
+                "pattern": Path("pet/*_rec-nacstat_pet.nii*"),
+                "description": "PET data with reconstruction method nacstat",
+            },
+        ),
+        (
+            "11CPIB",
+            "coregavg",
+            {
+                "pattern": Path("pet/*_trc-11CPIB_rec-coregavg_pet.nii*"),
+                "description": "PET data with 11CPIB tracer with reconstruction method coregavg",
+            },
+        ),
+    ],
+)
+def test_bids_pet_nii(tracer, reconstruction, expected):
     from clinica.utils.input_files import bids_pet_nii
 
-    assert bids_pet_nii() == {
-        "pattern": Path("pet") / "*_pet.nii*",
-        "description": "PET data",
-    }
-
-
-@pytest.fixture
-def expected_bids_pet_query(tracer, reconstruction):
-    return {
-        "pattern": Path("pet")
-        / f"*_trc-{tracer.value}_rec-{reconstruction.value}_pet.nii*",
-        "description": f"PET data with {tracer.value} tracer and reconstruction method {reconstruction.value}",
-    }
-
-
-@pytest.mark.parametrize("tracer", Tracer)
-@pytest.mark.parametrize("reconstruction", ReconstructionMethod)
-def test_bids_pet_nii(tracer, reconstruction, expected_bids_pet_query):
-    from clinica.utils.input_files import bids_pet_nii
-
-    assert bids_pet_nii(tracer, reconstruction) == expected_bids_pet_query
+    assert bids_pet_nii(tracer, reconstruction) == expected
 
 
 @pytest.mark.parametrize("dti_measure", DTIBasedMeasure)
@@ -87,3 +97,72 @@ def test_dwi_dti_query_error():
         match="'foo' is not a valid DTIBasedMeasure",
     ):
         dwi_dti("foo")
+
+
+@pytest.mark.parametrize(
+    "input_parameters,expected_description,expected_pattern",
+    [
+        (
+            {},
+            (
+                "Cropped PET nifti image affinely registered to the MNI152NLin2009cSym "
+                "template resulting from the pet-linear pipeline"
+            ),
+            "pet_linear/*_space-MNI152NLin2009cSym_desc-Crop*_pet.nii.gz",
+        ),
+        (
+            {
+                "acq_label": "18FFDG",
+            },
+            (
+                "Cropped PET nifti image obtained with tracer 18FFDG affinely registered to the "
+                "MNI152NLin2009cSym template resulting from the pet-linear pipeline"
+            ),
+            "pet_linear/*_trc-18FFDG_space-MNI152NLin2009cSym_desc-Crop*_pet.nii.gz",
+        ),
+        (
+            {
+                "acq_label": "18FAV45",
+                "suvr_reference_region": "pons",
+                "uncropped_image": True,
+                "resolution": 2,
+            },
+            (
+                "PET nifti image of resolution 2x2x2 obtained with tracer 18FAV45 for SUVR region "
+                "pons affinely registered to the MNI152NLin2009cSym template resulting from the pet-linear pipeline"
+            ),
+            "pet_linear/*_trc-18FAV45_space-MNI152NLin2009cSym*_res-2x2x2_suvr-pons_pet.nii.gz",
+        ),
+        (
+            {
+                "suvr_reference_region": "pons2",
+                "resolution": 2,
+                "space": "T1w",
+            },
+            (
+                "PET nifti image of resolution 2x2x2 for SUVR region pons2 affinely "
+                "registered to the associated T1w image resulting from the pet-linear pipeline"
+            ),
+            "pet_linear/*_space-T1w*_res-2x2x2_suvr-pons2_pet.nii.gz",
+        ),
+        (
+            {
+                "acq_label": "18FFDG",
+                "space": "T1w",
+            },
+            (
+                "PET nifti image obtained with tracer 18FFDG affinely registered to the "
+                "associated T1w image resulting from the pet-linear pipeline"
+            ),
+            "pet_linear/*_trc-18FFDG_space-T1w*_pet.nii.gz",
+        ),
+    ],
+)
+def test_pet_linear_nii(input_parameters, expected_description, expected_pattern):
+    from clinica.utils.input_files import pet_linear_nii
+
+    query = pet_linear_nii(**input_parameters)
+
+    assert query["description"] == expected_description
+    assert query["needed_pipeline"] == "pet-linear"
+    assert str(query["pattern"]) == expected_pattern

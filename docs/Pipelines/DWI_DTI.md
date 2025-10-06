@@ -12,7 +12,7 @@ To that aim, it mainly relies on the **MRtrix3** [[Tournier et al., 2019](https:
 You need [preprocessed DWI data](../DWI_Preprocessing) prior to running any of these pipelines.
 
 ## Dependencies
-If you only installed the core of Clinica, this pipeline needs the installation of [ANTs v2.5.0](../Third-party.md#ants), [FSL 6.0](../Third-party.md#fsl), and [MRtrix3](../Third-party.md#mrtrix3) on your computer.
+If you only installed the core of Clinica, this pipeline needs the installation of [ANTs v2.5.0](../Software/Third-party.md#ants), [FSL 6.0](../Software/Third-party.md#fsl), and [MRtrix3](../Software/Third-party.md#mrtrix3) on your computer.
 
 ## Running the pipeline
 
@@ -24,9 +24,10 @@ clinica run dwi-dti CAPS_DIRECTORY
 
 where:
 
-- `CAPS_DIRECTORY` is the input/output folder containing the results in a [CAPS](../../CAPS/Introduction) hierarchy.
+--8<-- "snippets/cmd_inputs.md:caps"
 
-If you want to run the pipeline on a subset of your CAPS dataset, you can use the `-tsv` flag to specify in a TSV file the participants belonging to your subset.
+??? info "Optional parameters common to all pipelines"
+    --8<-- "snippets/pipelines_options.md:all"
 
 ## Outputs
 

@@ -34,10 +34,11 @@ def _check_pipeline_parameters(parameters: dict) -> dict:
         Cleaned dictionary of parameters.
     """
     from clinica.utils.atlas import T1AndPetVolumeAtlasName
-    from clinica.utils.group import check_group_label
+    from clinica.utils.group import GroupLabel
 
     parameters.setdefault("group_label", None)
-    check_group_label(parameters["group_label"])
+    if parameters["group_label"]:
+        parameters["group_label"] = GroupLabel(parameters["group_label"])
     if "acq_label" not in parameters.keys():
         raise KeyError("Missing compulsory acq_label key in pipeline parameter.")
     parameters.setdefault("pvc_psf_tsv", None)
@@ -71,9 +72,9 @@ def build_core_workflow(name: str = "core", parameters: dict = {}) -> Workflow:
     """
     from pydra.tasks import petpvc
 
+    from clinica.pipelines.pet.utils import get_suvr_mask
     from clinica.pydra.shared_workflows.smoothing import build_smoothing_workflow
     from clinica.pydra.utils import sanitize_fwhm
-    from clinica.utils.pet import get_suvr_mask
     from clinica.utils.spm import use_spm_standalone_if_available
 
     use_spm_standalone_if_available()

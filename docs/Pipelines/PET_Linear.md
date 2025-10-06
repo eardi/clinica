@@ -2,17 +2,13 @@
 # `pet-linear` - Linear processing of PET images
 
 This pipeline performs spatial normalization to the MNI space and intensity normalization of [PET](../glossary.md#pet) images.
+
 Its steps include:
 
-- affine registration to the [MNI152NLin2009cSym](https://bids-specification.readthedocs.io/en/stable/99-appendices/08-coordinate-systems.html#template-based-coordinate-systems)
-template [Fonov et al., [2011](https://doi.org/10.1016/j.neuroimage.2010.07.033),
-[2009](https://doi.org/10.1016/S1053-8119(09)70884-5)] in MNI space with the
-SyN algorithm [[Avants et al., 2008](https://doi.org/10.1016/j.media.2007.06.004)]
-from the [ANTs](http://stnava.github.io/ANTs/) software package
-[[Avants et al., 2014](https://doi.org/10.3389/fninf.2014.00044)];
-- intensity normalization using the average [PET](../glossary.md#pet) uptake in reference regions
-resulting in a standardized uptake value ratio ([SUVR](../glossary.md#suvr)) map;
-- cropping of the registered images to remove the background.
+- clipping of the background to remove noisy values which can deteriorate further processing.
+- affine registration to the [MNI152NLin2009cSym](https://bids-specification.readthedocs.io/en/stable/99-appendices/08-coordinate-systems.html#template-based-coordinate-systems) template [Fonov et al., [2011](https://doi.org/10.1016/j.neuroimage.2010.07.033), [2009](https://doi.org/10.1016/S1053-8119(09)70884-5)] in MNI space with the SyN algorithm [[Avants et al., 2008](https://doi.org/10.1016/j.media.2007.06.004)] from the [ANTs](http://stnava.github.io/ANTs/) software package [[Avants et al., 2014](https://doi.org/10.3389/fninf.2014.00044)]
+- intensity normalization using the average [PET](../glossary.md#pet) uptake in reference regions resulting in a standardized uptake value ratio ([SUVR](../glossary.md#suvr)) map
+- cropping of the registered images to remove the background
 
 !!! note "Clinica & BIDS specifications for PET modality"
     Since Clinica `v0.6`, PET data following the official specifications in BIDS version 1.6.0 are now compatible with Clinica.
@@ -20,11 +16,11 @@ resulting in a standardized uptake value ratio ([SUVR](../glossary.md#suvr)) map
 
 ## Prerequisites
 
-You need to have performed the [`t1-linear`](../T1_Linear) pipeline on your T1-weighted MR images.
+You need to have performed the [`t1-linear`](./T1_Linear.md) pipeline on your T1-weighted MR images.
 
 ## Dependencies
 
-If you only installed the core of Clinica, this pipeline needs the installation of [ANTs](../Third-party.md#ants) on your computer.
+If you only installed the core of Clinica, this pipeline needs the installation of [ANTs](../Software/Third-party.md#ants) on your computer.
 
 ## Running the pipeline
 
@@ -37,36 +33,27 @@ clinica run pet-linear [OPTIONS] BIDS_DIRECTORY CAPS_DIRECTORY ACQ_LABEL
 
 where:
 
-- `BIDS_DIRECTORY` is the input folder containing the dataset in a
-[BIDS](../../BIDS) hierarchy;
-- `CAPS_DIRECTORY` is the output folder containing the results in a
-[CAPS](../../CAPS/Introduction) hierarchy;
-- `ACQ_LABEL` is the label given to the PET acquisition, specifying the tracer
-used (`trc-<acq_label>`). It can be for instance '18FFDG' for
-<sup>18</sup>F-fluorodeoxyglucose or '18FAV45' for <sup>18</sup>F-florbetapir;
-- The reference region is used to perform intensity normalization (i.e.
-  dividing each voxel of the image by the average uptake in this region)
-  resulting in a standardized uptake value ratio ([SUVR](../glossary.md#suvr)) map. It can be
-  `cerebellumPons` or `cerebellumPons2` (used for amyloid tracers) and `pons`
-  or `pons2` (used for FDG). See [PET introduction](./PET_Introduction.md) for
-  more details about masks versions.
+--8<-- "snippets/cmd_inputs.md:bids_caps"
+--8<-- "snippets/cmd_inputs.md:acq"
+--8<-- "snippets/cmd_inputs.md:region"
 
-By default, cropped images (matrix size 169×208×179, 1 mm isotropic voxels) are
-generated to reduce the computing power required when training deep learning
-models. Use the `--uncropped_image` option if you do not want to crop the image.
+with specific options :
 
-The pipeline also offers the possibility to save the [PET](../glossary.md#pet) image in the T1w space
-after rigid transformation using the `--save_pet_in_t1w_space` option.
+--8<-- "snippets/pipelines_options.md:linear"
+--8<-- "snippets/pipelines_options.md:pet_recon"
+- `--save_pet_in_t1w_space`: Use this option to save the [PET](../glossary.md#pet) image in the T1w space after rigid transformation.
 
-!!! note
-    The arguments common to all Clinica pipelines are described in [Interacting with Clinica](../../InteractingWithClinica).
+??? info "Optional parameters common to all pipelines"
+    --8<-- "snippets/pipelines_options.md:all"
+
+--8<-- "snippets/known_issues.md:several_pet"
 
 !!! tip
     Do not hesitate to type `clinica run pet-linear --help` to see the full list of parameters.
 
 ## Outputs
 
-Results are stored in the following folder of the [CAPS hierarchy](../../CAPS/Specifications/#pet-imaging-data): `subjects/<participant_id>/<session_id>/pet_linear`.
+Results are stored in the following folder of the [CAPS hierarchy](../CAPS/Specifications.md#pet-imaging-data): `subjects/<participant_id>/<session_id>/pet_linear`.
 
 The main output files are:
 
@@ -100,5 +87,4 @@ You can now use the [ClinicaDL framework](https://clinicadl.readthedocs.io/) pre
     resulting in images of size 169×208×179 with 1 mm isotropic voxels.
 
 !!! tip
-    Easily access the papers cited on this page on
-    [Zotero](https://www.zotero.org/groups/2240070/clinica_aramislab/collections/8AEDUMZB).
+    Easily access the papers cited on this page on [Zotero](https://www.zotero.org/groups/2240070/clinica_aramislab/collections/8AEDUMZB).

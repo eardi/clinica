@@ -1,7 +1,9 @@
+from pathlib import Path
 from typing import List
 
 from nipype import config
 
+from clinica.dataset import Visit
 from clinica.pipelines.engine import Pipeline
 
 cfg = dict(execution={"parameterize_dirs": False})
@@ -63,6 +65,78 @@ class T1VolumeTissueSegmentation(Pipeline):
             "t1_mni",
         ]
 
+    def get_processed_visits(self) -> list[Visit]:
+        """Return a list of visits for which the pipeline is assumed to have run already.
+
+        Before running the pipeline, for a given visit, if both the PET SUVR registered image
+        and the rigid transformation files already exist, then the visit is added to this list.
+        The pipeline will further skip these visits and run processing only for the remaining
+        visits.
+        """
+        from functools import reduce
+
+        from clinica.utils.filemanip import extract_visits
+        from clinica.utils.input_files import (
+            t1_volume_dartel_input_tissue,
+            t1_volume_native_tpm,
+            t1_volume_native_tpm_in_mni,
+        )
+        from clinica.utils.inputs import clinica_file_reader
+
+        if not self.caps_directory.is_dir():
+            return []
+        visits = [
+            set(extract_visits(x[0]))
+            for x in [
+                clinica_file_reader(
+                    self.subjects,
+                    self.sessions,
+                    self.caps_directory,
+                    pattern,
+                )
+                for pattern in [
+                    t1_volume_dartel_input_tissue(tissue_number=i)
+                    for i in self.parameters["dartel_tissues"]
+                ]
+            ]
+        ]
+        visits.extend(
+            [
+                set(extract_visits(x[0]))
+                for x in [
+                    clinica_file_reader(
+                        self.subjects,
+                        self.sessions,
+                        self.caps_directory,
+                        pattern,
+                    )
+                    for pattern in [
+                        t1_volume_native_tpm(tissue_number=i)
+                        for i in self.parameters["tissue_classes"]
+                    ]
+                ]
+            ]
+        )
+        visits.extend(
+            [
+                set(extract_visits(x[0]))
+                for x in [
+                    clinica_file_reader(
+                        self.subjects,
+                        self.sessions,
+                        self.caps_directory,
+                        pattern,
+                    )
+                    for pattern in [
+                        t1_volume_native_tpm_in_mni(tissue_number=i, modulation=False)
+                        for i in self.parameters["tissue_classes"]
+                    ]
+                ]
+            ]
+        )
+
+        return sorted(list(reduce(lambda x, y: x.intersection(y), visits)))
+
     def _build_input_node(self):
         """Build and connect an input node to the pipeline.
 
@@ -72,32 +146,27 @@ class T1VolumeTissueSegmentation(Pipeline):
         import nipype.interfaces.utility as nutil
         import nipype.pipeline.engine as npe
 
-        from clinica.iotools.utils.data_handling import (
-            check_volume_location_in_world_coordinate_system,
+        from clinica.iotools.data_handling import (
+            are_images_centered_around_origin_of_world_coordinate_system,
         )
-        from clinica.utils.exceptions import ClinicaBIDSError, ClinicaException
         from clinica.utils.input_files import T1W_NII
-        from clinica.utils.inputs import clinica_file_reader
+        from clinica.utils.inputs import clinica_file_filter
         from clinica.utils.stream import cprint
         from clinica.utils.ux import print_images_to_process
 
         # Inputs from anat/ folder
         # ========================
         # T1w file:
-        try:
-            t1w_files, _ = clinica_file_reader(
-                self.subjects, self.sessions, self.bids_directory, T1W_NII
-            )
-        except ClinicaException as e:
-            err = f"Clinica faced error(s) while trying to read files in your BIDS directory.\n{str(e)}"
-            raise ClinicaBIDSError(err)
-
-        check_volume_location_in_world_coordinate_system(
-            t1w_files,
-            self.bids_directory,
-            skip_question=self.parameters["skip_question"],
+        t1w_files, subjects, sessions = clinica_file_filter(
+            self.subjects, self.sessions, self.bids_directory, T1W_NII
         )
+        self.subjects = subjects
+        self.sessions = sessions
 
+        are_images_centered_around_origin_of_world_coordinate_system(
+            [Path(f) for f in t1w_files],
+            self.bids_directory,
+        )
         if len(self.subjects):
             print_images_to_process(self.subjects, self.sessions)
             cprint("The pipeline will last approximately 10 minutes per image.")
@@ -138,8 +207,6 @@ class T1VolumeTissueSegmentation(Pipeline):
             print_end_pipeline,
             zip_list_files,
         )
-
-        use_spm_standalone_if_available()
 
         # Get <subject_id> (e.g. sub-CLNC01_ses-M000) from input_node
         # and print begin message

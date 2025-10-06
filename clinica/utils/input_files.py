@@ -7,7 +7,7 @@ import functools
 from collections.abc import Iterable
 from typing import Optional, Union
 
-from clinica.pipelines.dwi.dti.utils import DTIBasedMeasure
+from clinica.utils.dwi import DTIBasedMeasure
 from clinica.utils.pet import ReconstructionMethod, SUVRReferenceRegion, Tracer
 
 # BIDS
@@ -341,45 +341,48 @@ def aggregator(func):
 
 
 @aggregator
-def t1_volume_native_tpm(tissue_number):
+def t1_volume_native_tpm(tissue_number: int) -> dict:
     from pathlib import Path
 
-    from .spm import INDEX_TISSUE_MAP
+    from .spm import get_spm_tissue_from_index
 
+    tissue = get_spm_tissue_from_index(tissue_number)
     return {
         "pattern": Path("t1")
         / "spm"
         / "segmentation"
         / "native_space"
-        / f"*_*_T1w_segm-{INDEX_TISSUE_MAP[tissue_number]}_probability.nii*",
-        "description": f"Tissue probability map {INDEX_TISSUE_MAP[tissue_number]} in native space",
+        / f"*_*_T1w_segm-{tissue.value}_probability.nii*",
+        "description": f"Tissue probability map {tissue.value} in native space",
         "needed_pipeline": "t1-volume-tissue-segmentation",
     }
 
 
 @aggregator
-def t1_volume_dartel_input_tissue(tissue_number):
+def t1_volume_dartel_input_tissue(tissue_number: int) -> dict:
     from pathlib import Path
 
-    from .spm import INDEX_TISSUE_MAP
+    from .spm import get_spm_tissue_from_index
 
+    tissue = get_spm_tissue_from_index(tissue_number)
     return {
         "pattern": Path("t1")
         / "spm"
         / "segmentation"
         / "dartel_input"
-        / f"*_*_T1w_segm-{INDEX_TISSUE_MAP[tissue_number]}_dartelinput.nii*",
-        "description": f"Dartel input for tissue probability map {INDEX_TISSUE_MAP[tissue_number]} from T1w MRI",
+        / f"*_*_T1w_segm-{tissue.value}_dartelinput.nii*",
+        "description": f"Dartel input for tissue probability map {tissue.value} from T1w MRI",
         "needed_pipeline": "t1-volume-tissue-segmentation",
     }
 
 
 @aggregator
-def t1_volume_native_tpm_in_mni(tissue_number, modulation):
+def t1_volume_native_tpm_in_mni(tissue_number: int, modulation: bool) -> dict:
     from pathlib import Path
 
-    from .spm import INDEX_TISSUE_MAP
+    from .spm import get_spm_tissue_from_index
 
+    tissue = get_spm_tissue_from_index(tissue_number)
     pattern_modulation = "on" if modulation else "off"
     description_modulation = "with" if modulation else "without"
 
@@ -388,16 +391,18 @@ def t1_volume_native_tpm_in_mni(tissue_number, modulation):
         / "spm"
         / "segmentation"
         / "normalized_space"
-        / f"*_*_T1w_segm-{INDEX_TISSUE_MAP[tissue_number]}_space-Ixi549Space_modulated-{pattern_modulation}_probability.nii*",
+        / f"*_*_T1w_segm-{tissue.value}_space-Ixi549Space_modulated-{pattern_modulation}_probability.nii*",
         "description": (
-            f"Tissue probability map {INDEX_TISSUE_MAP[tissue_number]} based on "
+            f"Tissue probability map {tissue.value} based on "
             f"native MRI in MNI space (Ixi549) {description_modulation} modulation."
         ),
         "needed_pipeline": "t1-volume-tissue-segmentation",
     }
 
 
-def t1_volume_template_tpm_in_mni(group_label, tissue_number, modulation, fwhm=None):
+def t1_volume_template_tpm_in_mni(
+    group_label: str, tissue_number: int, modulation: bool, fwhm: Optional[int] = None
+) -> dict:
     """Build the dictionary required by clinica_file_reader to get the tissue
     probability maps based on group template in MNI space.
 
@@ -422,8 +427,9 @@ def t1_volume_template_tpm_in_mni(group_label, tissue_number, modulation, fwhm=N
     """
     from pathlib import Path
 
-    from .spm import INDEX_TISSUE_MAP
+    from .spm import get_spm_tissue_from_index
 
+    tissue = get_spm_tissue_from_index(tissue_number)
     pattern_modulation = "on" if modulation else "off"
     description_modulation = "with" if modulation else "without"
     fwhm_key_value = f"_fwhm-{fwhm}mm" if fwhm else ""
@@ -434,10 +440,10 @@ def t1_volume_template_tpm_in_mni(group_label, tissue_number, modulation, fwhm=N
         / "spm"
         / "dartel"
         / f"group-{group_label}"
-        / f"*_T1w_segm-{INDEX_TISSUE_MAP[tissue_number]}_space-Ixi549Space_modulated-{pattern_modulation}{fwhm_key_value}_probability.nii*",
+        / f"*_T1w_segm-{tissue.value}_space-Ixi549Space_modulated-{pattern_modulation}{fwhm_key_value}_probability.nii*",
         "description": (
-            f"Tissue probability map {INDEX_TISSUE_MAP[tissue_number]} based "
-            f"on {group_label} template in MNI space (Ixi549) {description_modulation} modulation and {fwhm_description}."
+            f"Tissue probability map {tissue.value} based on {group_label} template in MNI space "
+            f"(Ixi549) {description_modulation} modulation and {fwhm_description}."
         ),
         "needed_pipeline": "t1-volume",
     }
@@ -605,15 +611,17 @@ def bids_pet_nii(
 
     description = f"PET data"
     trc = ""
+    rec = ""
+
     if tracer is not None:
         tracer = Tracer(tracer)
         trc = f"_trc-{tracer.value}"
         description += f" with {tracer.value} tracer"
-    rec = ""
+        rec = "*"
     if reconstruction is not None:
         reconstruction = ReconstructionMethod(reconstruction)
         rec = f"_rec-{reconstruction.value}"
-        description += f" and reconstruction method {reconstruction.value}"
+        description += f" with reconstruction method {reconstruction.value}"
 
     return {
         "pattern": Path("pet") / f"*{trc}{rec}_pet.nii*",
@@ -674,28 +682,71 @@ def pet_volume_normalized_suvr_pet(
     return information
 
 
+def _clean_pattern(pattern: str, character: str = "*") -> str:
+    """Removes multiple '*' wildcards in provided pattern."""
+    cleaned = []
+    for c in pattern:
+        if not cleaned or not cleaned[-1] == c == character:
+            cleaned.append(c)
+    return "".join(cleaned)
+
+
 def pet_linear_nii(
-    acq_label: Union[str, Tracer],
-    suvr_reference_region: Union[str, SUVRReferenceRegion],
-    uncropped_image: bool,
+    acq_label: Optional[Union[str, Tracer]] = None,
+    suvr_reference_region: Optional[Union[str, SUVRReferenceRegion]] = None,
+    uncropped_image: bool = False,
+    space: str = "mni",
+    resolution: Optional[int] = None,
 ) -> dict:
     from pathlib import Path
 
-    acq_label = Tracer(acq_label)
-    region = SUVRReferenceRegion(suvr_reference_region)
-
-    if uncropped_image:
-        description = ""
-    else:
+    tracer_filter = "*"
+    tracer_description = ""
+    if acq_label:
+        acq_label = Tracer(acq_label)
+        tracer_filter = f"_trc-{acq_label.value}"
+        tracer_description = f" obtained with tracer {acq_label.value}"
+    region_filter = "*"
+    region_description = ""
+    if suvr_reference_region:
+        region = SUVRReferenceRegion(suvr_reference_region)
+        region_filter = f"_suvr-{region.value}"
+        region_description = f" for SUVR region {region.value}"
+    space_filer = f"_space-{'MNI152NLin2009cSym' if space == 'mni' else 'T1w'}"
+    space_description = f" affinely registered to the {'MNI152NLin2009cSym template' if space == 'mni' else 'associated T1w image'}"
+    description = "*"
+    if space == "mni" and not uncropped_image:
         description = "_desc-Crop"
-
+    resolution_filter = "*"
+    resolution_description = ""
+    if resolution:
+        resolution_explicit = f"{resolution}x{resolution}x{resolution}"
+        resolution_filter = f"_res-{resolution_explicit}"
+        resolution_description = f" of resolution {resolution_explicit}"
     information = {
         "pattern": Path("pet_linear")
-        / f"*_trc-{acq_label.value}_pet_space-MNI152NLin2009cSym{description}_res-1x1x1_suvr-{region.value}_pet.nii.gz",
-        "description": "",
+        / _clean_pattern(
+            f"*{tracer_filter}{space_filer}{description}{resolution_filter}{region_filter}_pet.nii.gz"
+        ),
+        "description": (
+            f"{'Cropped ' if space == 'mni' and not uncropped_image else ''}PET nifti image{resolution_description}"
+            f"{tracer_description}{region_description}{space_description} resulting from the pet-linear pipeline"
+        ),
         "needed_pipeline": "pet-linear",
     }
     return information
+
+
+def pet_linear_transformation_matrix(tracer: Union[str, Tracer]) -> dict:
+    from pathlib import Path
+
+    tracer = Tracer(tracer)
+
+    return {
+        "pattern": Path("pet_linear") / f"*_trc-{tracer.value}_space-T1w_rigid.mat",
+        "description": "Rigid transformation matrix between the PET and T1w images estimated with ANTs.",
+        "needed_pipeline": "pet-linear",
+    }
 
 
 # CUSTOM
